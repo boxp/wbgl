@@ -18,14 +18,16 @@ window.onload = function () {
   var prg = create_program(v_shader, f_shader);
 
   // attributeLocationを配列に登録
-  var attLocation = new Array(2);
+  var attLocation = new Array();
   attLocation[0] = gl.getAttribLocation(prg, 'position');
-  attLocation[1] = gl.getAttribLocation(prg, 'color');
+  attLocation[1] = gl.getAttribLocation(prg, 'normal');
+  attLocation[2] = gl.getAttribLocation(prg, 'color');
 
   // attributeの要素数を配列に格納
-  var attStride = new Array(2);
+  var attStride = new Array();
   attStride[0] = 3;
-  attStride[1] = 4;
+  attStride[1] = 3;
+  attStride[2] = 4;
 
   // 頂点の位置情報を格納する配列
   var vertex_position = [
@@ -49,15 +51,20 @@ window.onload = function () {
     1, 2, 3
   ];
 
+  // 環境光の色
+  var ambientColor = [0.1, 0.1, 0.1, 0.1];
+
   var torusData = torus(32, 32, 1.0, 2.0);
   vertex_position = torusData[0];
-  vertex_color = torusData[1];
-  ibo_index = torusData[2];
+  vertex_normal = torusData[1]
+  vertex_color = torusData[2];
+  ibo_index = torusData[3];
 
   // VBOを生成
-  var vbo = new Array(2);
+  var vbo = new Array(3);
   vbo[0] = create_vbo(vertex_position);
-  vbo[1] = create_vbo(vertex_color);
+  vbo[1] = create_vbo(vertex_normal);
+  vbo[2] = create_vbo(vertex_color);
 
   // VBOをバインドし、登録する
   set_attribute(vbo, attLocation, attStride);
@@ -75,13 +82,25 @@ window.onload = function () {
   var pMatrix = m.identity(m.create());
   var tmpMatrix = m.identity(m.create());
   var mvpMatrix = m.identity(m.create());
+  var invMatrix = m.identity(m.create());
 
-  var uniLocation = gl.getUniformLocation(prg, 'mvpMatrix');
+  var uniLocation = new Array();
+  uniLocation[0] = gl.getUniformLocation(prg, 'mvpMatrix');
+  uniLocation[1] = gl.getUniformLocation(prg, 'invMatrix');
+  uniLocation[2] = gl.getUniformLocation(prg, 'lightDirection');
+  uniLocation[3] = gl.getUniformLocation(prg, 'eyeDirection');
+  uniLocation[4] = gl.getUniformLocation(prg, 'ambientColor');
+
+  // 視点の向き
+  var eyeDirection = [0.0, 0.0, 10.0];
 
   // ビュー座標変換行列
-  m.lookAt([0.0, 1.0, 3.0], [0, 0, 0], [0, 1, 0], vMatrix);
+  m.lookAt(eyeDirection, [0, 0, 0], [0, 1, 0], vMatrix);
   m.perspective(90, c.width / c.height, 0.1, 100, pMatrix);
   m.multiply(pMatrix, vMatrix, tmpMatrix);
+
+  // 平行光源の向き
+  var lightDirection = [-0.5, 0.5, 0.5];
 
   // カウンタ
   var count = 0;
@@ -108,30 +127,38 @@ window.onload = function () {
   } 
 
   // トーラスの描画
+  // row: 円の数
+  // column: 円一つあたりの頂点数
+  // irad: 円の半径
+  // orad: トーラス全体の半径
   function torus(row, column, irad, orad){
-      var pos = new Array(), col = new Array(), idx = new Array();
-      for(var i = 0; i <= row; i++){
-          var r = Math.PI * 2 / row * i;
-          var rr = Math.cos(r);
-          var ry = Math.sin(r);
-          for(var ii = 0; ii <= column; ii++){
-              var tr = Math.PI * 2 / column * ii;
-              var tx = (rr * irad + orad) * Math.cos(tr);
-              var ty = ry * irad;
-              var tz = (rr * irad + orad) * Math.sin(tr);
-              pos.push(tx, ty, tz);
-              var tc = hsva(360 / column * ii, 1, 1, 1);
-              col.push(tc[0], tc[1], tc[2], tc[3]);
-          }
-      }
-      for(i = 0; i < row; i++){
-          for(ii = 0; ii < column; ii++){
-              r = (column + 1) * i + ii;
-              idx.push(r, r + column + 1, r + 1);
-              idx.push(r + column + 1, r + column + 2, r + 1);
-          }
-      }
-      return [pos, col, idx];
+    var pos = new Array(), nor = new Array(),
+        col = new Array(), idx = new Array();
+    for(var i = 0; i <= row; i++){
+        var r = Math.PI * 2 / row * i;
+        var rr = Math.cos(r);
+        var ry = Math.sin(r);
+        for(var ii = 0; ii <= column; ii++){
+            var tr = Math.PI * 2 / column * ii;
+            var tx = (rr * irad + orad) * Math.cos(tr);
+            var ty = ry * irad;
+            var tz = (rr * irad + orad) * Math.sin(tr);
+            var rx = rr * Math.cos(tr);
+            var rz = rr * Math.sin(tr);
+            pos.push(tx, ty, tz);
+            nor.push(rx, ry, rz);
+            var tc = hsva(360 / column * ii, 1, 1, 1);
+            col.push(tc[0], tc[1], tc[2], tc[3]);
+        }
+    }
+    for(i = 0; i < row; i++){
+        for(ii = 0; ii < column; ii++){
+            r = (column + 1) * i + ii;
+            idx.push(r, r + column + 1, r + 1);
+            idx.push(r + column + 1, r + column + 2, r + 1);
+        }
+    }
+    return [pos, nor, col, idx];
   }
 
 	gl.enable(gl.DEPTH_TEST);
@@ -153,9 +180,14 @@ window.onload = function () {
     var rad = (count % 360) * Math.PI / 180;
 
     m.identity(mMatrix);
-    m.rotate(mMatrix, rad, [0, 1, 0], mMatrix);
+    // x軸を中心に回転させます
+    m.rotate(mMatrix, rad, [1, 0, 0], mMatrix);
     m.multiply(tmpMatrix, mMatrix, mvpMatrix);
-    gl.uniformMatrix4fv(uniLocation, false, mvpMatrix);
+    gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+    gl.uniformMatrix4fv(uniLocation[1], false, invMatrix);
+    gl.uniform3fv(uniLocation[2], lightDirection);
+    gl.uniform3fv(uniLocation[3], eyeDirection);
+    gl.uniform4fv(uniLocation[4], ambientColor);
 
     // インデックスを用いた描画命令
     gl.drawElements(gl.TRIANGLES, ibo_index.length, gl.UNSIGNED_SHORT, 0);
@@ -189,7 +221,7 @@ window.onload = function () {
   // モデル行列から変換行列を完成させレンダリングする
   function render_model(mMatrix) {
     m.multiply(tmpMatrix, mMatrix, mvpMatrix);
-    gl.uniformMatrix4fv(uniLocation, false, mvpMatrix);
+    gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   };
 
