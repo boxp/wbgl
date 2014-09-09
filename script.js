@@ -2,8 +2,12 @@ window.onload = function () {
 
   var c = document.getElementById('canvas');
 
-  c.width = 300;
+  c.width = 500;
   c.height = 300;
+
+  var elmTransparency = document.getElementById('transparency');
+  var elmAdd = document.getElementById('add');
+  var elmRange = document.getElementById('range');
 
   var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
 
@@ -38,11 +42,11 @@ window.onload = function () {
 
   // 頂点の色情報を格納する配列
   var color = [
-    1.0, 1.0, 1.0, 1.0,
-    1.0, 1.0, 1.0, 1.0,
-    1.0, 1.0, 1.0, 1.0,
-    1.0, 1.0, 1.0, 1.0
-  ];
+		1.0, 0.0, 0.0, 1.0,
+		0.0, 1.0, 0.0, 1.0,
+		0.0, 0.0, 1.0, 1.0,
+		1.0, 1.0, 1.0, 1.0
+	];
 
   var textureCoord = [
     0.0, 0.0,
@@ -68,8 +72,6 @@ window.onload = function () {
   set_attribute(VBOList, attLocation, attStride);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iIndex);
 
-  // 
-
   var m = new matIV();
 
   var mMatrix = m.identity(m.create());
@@ -81,14 +83,16 @@ window.onload = function () {
 
   var uniLocation = new Array();
   uniLocation[0] = gl.getUniformLocation(prg, 'mvpMatrix');
-  uniLocation[1] = gl.getUniformLocation(prg, 'texture');
+  uniLocation[1] = gl.getUniformLocation(prg, 'vertexAlpha');
+  uniLocation[2] = gl.getUniformLocation(prg, 'texture');
+  uniLocation[3] = gl.getUniformLocation(prg, 'useTexture');
 
   // 視点の向き
-  var eyeDirection = [0.0, 0.0, 10.0];
+  var eyeDirection = [0.0, 0.0, 5.0];
 
   // ビュー座標変換行列
   m.lookAt(eyeDirection, [0, 0, 0], [0, 1, 0], vMatrix);
-  m.perspective(60, c.width / c.height, 0.1, 100, pMatrix);
+  m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
   m.multiply(pMatrix, vMatrix, tmpMatrix);
 
   // 平行光源の向き
@@ -96,15 +100,6 @@ window.onload = function () {
 
   // カウンタ
   var count = 0;
-
-  // 有効にするテクスチャユニットを指定
-  gl.activeTexture(gl.TEXTURE0);
-
-  // テクスチャをバインド
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-
-  // uniform変数にテクスチャを登録
-  gl.uniform1i(uniLocation[1], 0);
 
   // HSV to RGB
   function hsva(h, s, v, a){
@@ -162,15 +157,23 @@ window.onload = function () {
     return [pos, nor, col, idx];
   }
 
+  // テクスチャの初期化
   var texture = null;
-
-  create_texture("img/texture.png");
+  create_texture("texture.png");
+  gl.activeTexture(gl.TEXTURE0);
 
   // 回常ループ
   (function () {
 
+    //ボタン処理
+    if(elmTransparency.checked) blend_type(0);
+    if(elmAdd.checked) blend_type(1);
+
+    //透明度の取得
+    var vertexAlpha = parseFloat(elmRange.value / 100);
+
     // canvasを初期化
-    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    gl.clearColor(0.0, 0.75, 0.75, 1.0);
     gl.clearDepth(1.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -180,23 +183,38 @@ window.onload = function () {
     // カウンタを元にラジアン(0~359)と各種座標を取得
     var rad = (count % 360) * Math.PI / 180;
 
-    // テクスチャをバインドする
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-
-    // uniform変数にテクスチャ登録
-    gl.uniform1i(uniLocation[1], 0);
-
     // モデル座標変換行列の生成
     m.identity(mMatrix);
+    m.translate(mMatrix, [0.25, 0.25, -0.25], mMatrix);
     m.rotate(mMatrix, rad, [0, 1, 0], mMatrix);
     m.multiply(tmpMatrix, mMatrix, mvpMatrix);
 
-    // uniform変数の登録と描画
+    // 有効にするテクスチャユニットを指定・バインド
+    // ・テクスチャに登録
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+
+    gl.disable(gl.BLEND);
+
     gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+    gl.uniform1f(uniLocation[1], 1.0);
+    gl.uniform1i(uniLocation[2], 0);
+    gl.uniform1i(uniLocation[3], true);
     gl.drawElements(gl.TRIANGLES, index.length, gl.UNSIGNED_SHORT, 0);
 
-    // テクスチャをバインドする
-    gl.bindTexture(gl.TEXTURE_2D, texture);
+    m.identity(mMatrix);
+		m.translate(mMatrix, [-0.25, -0.25, 0.25], mMatrix);
+		m.rotate(mMatrix, rad, [0, 0, 1], mMatrix);
+		m.multiply(tmpMatrix, mMatrix, mvpMatrix);
+
+    gl.bindTexture(gl.TEXTURE_2D, null);
+
+    gl.enable(gl.BLEND);
+
+    gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+		gl.uniform1f(uniLocation[1], vertexAlpha);
+		gl.uniform1i(uniLocation[2], 0);
+		gl.uniform1i(uniLocation[3], false);
+		gl.drawElements(gl.TRIANGLES, index.length, gl.UNSIGNED_SHORT, 0);
 
     // コンテキストの再描画
     gl.flush();
@@ -307,7 +325,7 @@ window.onload = function () {
     return vbo;
   }
 
-  function create_texture(source) {
+  function create_texture(source, number) {
     // イメージオブジェクトの生成
     var img = new Image();
 
@@ -328,13 +346,37 @@ window.onload = function () {
       gl.bindTexture(gl.TEXTURE_2D, null);
 
       // 生成したテクスチャをグローバル変数に格納
-      texture = tex;
+      switch(number) {
+        case 0:
+          texture0 = tex;
+          break;
+        case 1:
+          texture1 = tex;
+          break;
+        default:
+          texture = tex;
+          break;
+      };
     };
 
     // イメージオブジェクトのソースを指定
     img.src = source;
   };
 
+  function blend_type(prm) {
+    switch(prm) {
+      //透過処理
+      case 0:
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        break;
+      //加算合成
+      case 1:
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+        break;
+      default:
+        break;
+    }
+  }
 }
 
 // 球体を生成する関数
