@@ -1,13 +1,32 @@
 window.onload = function () {
 
+  // canvasとクォータニオンをグローバル変数とする
   var c = document.getElementById('canvas');
+
+  var q = new qtnIV();
+  var qt = q.identity(q.create());
+
+  // マウスムーブイベントリスナ
+  function mouseMove(e) {
+    var cw = c.width;
+    var ch = c.height;
+    var wh = 1 / Math.sqrt(cw * cw + ch * ch);
+    var x = e.clientX - c.offsetLeft - cw * 0.5;
+    var y = e.clientY - c.offsetTop - ch * 0.5;
+    var sq = Math.sqrt(x * x + y * y);
+    var r = sq * 2.0 * Math.PI * wh;
+    if (sq != 1) {
+      sq = 1 / sq;
+      x *= sq;
+      y *= sq;
+    }
+    q.rotate(r, [y, x, 0.0], qt);
+  }
 
   c.width = 500;
   c.height = 300;
 
-  var elmTransparency = document.getElementById('transparency');
-  var elmAdd = document.getElementById('add');
-  var elmRange = document.getElementById('range');
+  c.addEventListener('mousemove', mouseMove, true);
 
   var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
 
@@ -76,7 +95,6 @@ window.onload = function () {
   var m = new matIV();
   
   // 四元数の宣言と初期化
-  var q = new qtnIV();
   var xQuaternion = q.identity(q.create());
 
   var mMatrix = m.identity(m.create());
@@ -156,12 +174,10 @@ window.onload = function () {
 
     // カウンタを元にラジアン(0~359)と各種座標を取得
     var rad = (count % 180) * Math.PI / 90;
-    var rad2 = (count % 720) * Math.PI / 360;
 
-    // クォータニオンの演算
-    q.rotate(rad2, [1, 0, 0], xQuaternion);
-    q.toVecIII([0.0, 0.0, 10.0], xQuaternion, camPosition);
-    q.toVecIII([0.0, 1.0, 0.0], xQuaternion, camUpDirection);
+    // クォータニオンを行列に適用
+    var qMatrix = m.identity(m.create());
+    q.toMatIV(qt, qMatrix);
 
     m.lookAt(camPosition, [0, 0, 0], camUpDirection, vMatrix);
     m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
@@ -169,6 +185,7 @@ window.onload = function () {
 
     // モデル座標変換行列の生成
     m.identity(mMatrix);
+    m.multiply(mMatrix, qMatrix, mMatrix);
     m.rotate(mMatrix, rad, [0, 1, 0], mMatrix);
     m.multiply(tmpMatrix, mMatrix, mvpMatrix);
     m.inverse(mMatrix, invMatrix);
