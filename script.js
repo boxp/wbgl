@@ -3,6 +3,9 @@ window.onload = function () {
   // canvasとクォータニオンをグローバル変数とする
   var c = document.getElementById('canvas');
 
+  // input rangeエレメント
+  var eRange = document.getElementById('range');
+
   var q = new qtnIV();
   var qt = q.identity(q.create());
 
@@ -81,7 +84,7 @@ window.onload = function () {
   ];
 
   // VBOとIBOの生成
-  var torusData = torus(64, 64, 0.5, 1.5);
+  var torusData = torus(64, 64, 0.5, 1.5, [0.5, 0.5, 0.5, 1.0]);
   var vPosition = create_vbo(torusData.p);
   var vNormal = create_vbo(torusData.n);
   var vColor = create_vbo(torusData.c);
@@ -95,7 +98,9 @@ window.onload = function () {
   var m = new matIV();
   
   // 四元数の宣言と初期化
-  var xQuaternion = q.identity(q.create());
+  var aQuaternion = q.identity(q.create());
+  var bQuaternion = q.identity(q.create());
+  var sQuaternion = q.identity(q.create());
 
   var mMatrix = m.identity(m.create());
   var vMatrix = m.identity(m.create());
@@ -103,6 +108,7 @@ window.onload = function () {
   var tmpMatrix = m.identity(m.create());
   var mvpMatrix = m.identity(m.create());
   var invMatrix = m.identity(m.create());
+  var qMatrix = m.identity(m.create());
 
   var uniLocation = new Array();
   uniLocation[0] = gl.getUniformLocation(prg, 'mvpMatrix');
@@ -125,7 +131,7 @@ window.onload = function () {
   var ambientColor = [0.1, 0.1, 0.1, 1.0];
 
   // ビュー座標変換行列
-  m.lookAt(eyeDirection, [0, 0, 0], [0, 1, 0], vMatrix);
+  m.lookAt(eyeDirection, [0, 0, 0], camUpDirection, vMatrix);
   m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
   m.multiply(pMatrix, vMatrix, tmpMatrix);
 
@@ -161,6 +167,11 @@ window.onload = function () {
 	gl.depthFunc(gl.LEQUAL);
 	gl.enable(gl.CULL_FACE);
 
+  m.lookAt(camPosition, [0, 0, 0], camUpDirection, vMatrix);
+  m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
+  m.multiply(pMatrix, vMatrix, tmpMatrix);
+
+
   // 回常ループ
   (function () {
 
@@ -175,28 +186,40 @@ window.onload = function () {
     // カウンタを元にラジアン(0~359)と各種座標を取得
     var rad = (count % 180) * Math.PI / 90;
 
-    // クォータニオンを行列に適用
-    var qMatrix = m.identity(m.create());
-    q.toMatIV(qt, qMatrix);
+    // 経過時間係数を算出
+    var time = eRange.value / 100;
 
-    m.lookAt(camPosition, [0, 0, 0], camUpDirection, vMatrix);
-    m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
-    m.multiply(pMatrix, vMatrix, tmpMatrix);
+    // 回転クォータニオンの生成
+    q.rotate(rad, [1.0, 0.0, 0.0], aQuaternion);
+    q.rotate(rad, [0.0, 1.0, 0.0], bQuaternion);
+    q.slerp(aQuaternion, bQuaternion, time, sQuaternion);
 
-    // モデル座標変換行列の生成
-    m.identity(mMatrix);
-    m.multiply(mMatrix, qMatrix, mMatrix);
-    m.rotate(mMatrix, rad, [0, 1, 0], mMatrix);
-    m.multiply(tmpMatrix, mMatrix, mvpMatrix);
-    m.inverse(mMatrix, invMatrix);
+    // 結果を描画
+    ambientColor = [0.5, 0.0, 0.0, 1.0];
+		draw(aQuaternion);
+		ambientColor = [0.0, 0.5, 0.0, 1.0];
+		draw(bQuaternion);
+		ambientColor = [0.0, 0.0, 0.5, 1.0];
+		draw(sQuaternion);
 
-    gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
-    gl.uniformMatrix4fv(uniLocation[1], false, mMatrix);
-    gl.uniformMatrix4fv(uniLocation[2], false, invMatrix);
-    gl.uniform3fv(uniLocation[3], lightPosition);
-    gl.uniform3fv(uniLocation[4], camPosition);
-    gl.uniform4fv(uniLocation[5], ambientColor);
-    gl.drawElements(gl.TRIANGLES, torusData.i.length, gl.UNSIGNED_SHORT, 0);
+    function draw(qtn){
+			// モデル座標変換行列の生成
+			q.toMatIV(qtn, qMatrix);
+			m.identity(mMatrix);
+			m.multiply(mMatrix, qMatrix, mMatrix);
+			m.translate(mMatrix, [0.0, 0.0, -5.0], mMatrix);
+			m.multiply(tmpMatrix, mMatrix, mvpMatrix);
+			m.inverse(mMatrix, invMatrix);
+			
+      // uniformバッファに行列を登録
+			gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+			gl.uniformMatrix4fv(uniLocation[1], false, mMatrix);
+			gl.uniformMatrix4fv(uniLocation[2], false, invMatrix);
+			gl.uniform3fv(uniLocation[3], lightPosition);
+			gl.uniform3fv(uniLocation[4], camPosition);
+			gl.uniform4fv(uniLocation[5], ambientColor);
+			gl.drawElements(gl.TRIANGLES, torusData.i.length, gl.UNSIGNED_SHORT, 0);
+		}
 
     // コンテキストの再描画
     gl.flush();
