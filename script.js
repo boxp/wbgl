@@ -4,7 +4,7 @@ window.onload = function () {
   var c = document.getElementById('canvas');
 
   // input rangeエレメント
-  var eRange = document.getElementById('range');
+  var eCheck = document.getElementById('check');
 
   var q = new qtnIV();
   var qt = q.identity(q.create());
@@ -45,14 +45,14 @@ window.onload = function () {
   // attributeLocationを配列に登録
   var attLocation = new Array();
   attLocation[0] = gl.getAttribLocation(prg, 'position');
-  attLocation[1] = gl.getAttribLocation(prg, 'normal');
-  attLocation[2] = gl.getAttribLocation(prg, 'color');
+  attLocation[1] = gl.getAttribLocation(prg, 'color');
+  attLocation[2] = gl.getAttribLocation(prg, 'textureCoord');
 
   // attributeの要素数を配列に格納
   var attStride = new Array();
   attStride[0] = 3;
-  attStride[1] = 3;
-  attStride[2] = 4;
+  attStride[1] = 4;
+  attStride[2] = 2;
 
   // 頂点の位置情報を格納する配列
   var position = [
@@ -64,9 +64,9 @@ window.onload = function () {
 
   // 頂点の色情報を格納する配列
   var color = [
-		1.0, 0.0, 0.0, 1.0,
-		0.0, 1.0, 0.0, 1.0,
-		0.0, 0.0, 1.0, 1.0,
+		1.0, 1.0, 1.0, 1.0,
+		1.0, 1.0, 1.0, 1.0,
+		1.0, 1.0, 1.0, 1.0,
 		1.0, 1.0, 1.0, 1.0
 	];
 
@@ -83,13 +83,11 @@ window.onload = function () {
     3, 2, 1
   ];
 
-  // VBOとIBOの生成
-  var torusData = torus(64, 64, 0.5, 1.5, [0.5, 0.5, 0.5, 1.0]);
-  var vPosition = create_vbo(torusData.p);
-  var vNormal = create_vbo(torusData.n);
-  var vColor = create_vbo(torusData.c);
-  var VBOList = [vPosition, vNormal, vColor];
-  var iIndex = create_ibo(torusData.i);
+	var vPosition     = create_vbo(position);
+	var vColor        = create_vbo(color);
+	var vTextureCoord = create_vbo(textureCoord);
+	var VBOList       = [vPosition, vColor, vTextureCoord];
+	var iIndex        = create_ibo(index);
 
   // VBOとIBOの登録
   set_attribute(VBOList, attLocation, attStride);
@@ -112,11 +110,7 @@ window.onload = function () {
 
   var uniLocation = new Array();
   uniLocation[0] = gl.getUniformLocation(prg, 'mvpMatrix');
-  uniLocation[1] = gl.getUniformLocation(prg, 'mMatrix');
-  uniLocation[2] = gl.getUniformLocation(prg, 'invMatrix');
-  uniLocation[3] = gl.getUniformLocation(prg, 'lightPosition');
-  uniLocation[4] = gl.getUniformLocation(prg, 'eyeDirection');
-  uniLocation[5] = gl.getUniformLocation(prg, 'ambientColor');
+  uniLocation[1] = gl.getUniformLocation(prg, 'texture');
 
   // 視点の向き
   var eyeDirection = [0.0, 0.0, 5.0];
@@ -129,11 +123,6 @@ window.onload = function () {
 
   // 環境光
   var ambientColor = [0.1, 0.1, 0.1, 1.0];
-
-  // ビュー座標変換行列
-  m.lookAt(eyeDirection, [0, 0, 0], camUpDirection, vMatrix);
-  m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
-  m.multiply(pMatrix, vMatrix, tmpMatrix);
 
   // 平行光源の向き
   var lightPosition = [15.0, 10.0, 15.0];
@@ -165,11 +154,17 @@ window.onload = function () {
   // パラメーターの設定
   gl.enable(gl.DEPTH_TEST);
 	gl.depthFunc(gl.LEQUAL);
-	gl.enable(gl.CULL_FACE);
+	gl.enable(gl.BLEND);
+  
+  // ブレンドファクター
+  gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
 
-  m.lookAt(camPosition, [0, 0, 0], camUpDirection, vMatrix);
-  m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
-  m.multiply(pMatrix, vMatrix, tmpMatrix);
+  var texture0 = null;
+  var texture1 = null;
+
+  // テクスチャの読み込み
+  create_texture('texture0.png', 0);
+  create_texture('texture1.png', 1);
 
 
   // 回常ループ
@@ -180,46 +175,55 @@ window.onload = function () {
     gl.clearDepth(1.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    // カウンタをインクリメント
-    count++;
-
-    // カウンタを元にラジアン(0~359)と各種座標を取得
-    var rad = (count % 180) * Math.PI / 90;
-
-    // 経過時間係数を算出
-    var time = eRange.value / 100;
-
-    // 回転クォータニオンの生成
-    q.rotate(rad, [1.0, 0.0, 0.0], aQuaternion);
-    q.rotate(rad, [0.0, 1.0, 0.0], bQuaternion);
-    q.slerp(aQuaternion, bQuaternion, time, sQuaternion);
-
-    // 結果を描画
-    ambientColor = [0.5, 0.0, 0.0, 1.0];
-		draw(aQuaternion);
-		ambientColor = [0.0, 0.5, 0.0, 1.0];
-		draw(bQuaternion);
-		ambientColor = [0.0, 0.0, 0.5, 1.0];
-		draw(sQuaternion);
-
-    function draw(qtn){
-			// モデル座標変換行列の生成
-			q.toMatIV(qtn, qMatrix);
-			m.identity(mMatrix);
-			m.multiply(mMatrix, qMatrix, mMatrix);
-			m.translate(mMatrix, [0.0, 0.0, -5.0], mMatrix);
-			m.multiply(tmpMatrix, mMatrix, mvpMatrix);
-			m.inverse(mMatrix, invMatrix);
-			
-      // uniformバッファに行列を登録
-			gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
-			gl.uniformMatrix4fv(uniLocation[1], false, mMatrix);
-			gl.uniformMatrix4fv(uniLocation[2], false, invMatrix);
-			gl.uniform3fv(uniLocation[3], lightPosition);
-			gl.uniform3fv(uniLocation[4], camPosition);
-			gl.uniform4fv(uniLocation[5], ambientColor);
-			gl.drawElements(gl.TRIANGLES, torusData.i.length, gl.UNSIGNED_SHORT, 0);
-		}
+     // クォータニオンを行列に適用
+    var qMatrix = m.identity(m.create());
+    q.toMatIV(qt, qMatrix);
+    
+    // カメラの座標位置
+    var camPosition = [0.0, 5.0, 10.0];
+    
+    // ビュー座標変換行列
+    m.lookAt(camPosition, [0, 0, 0], [0, 1, 0], vMatrix);
+    
+    // ビルボード用のビュー座標変換行列
+    m.lookAt([0, 0, 0], camPosition, [0, 1, 0], invMatrix);
+    
+    // ビュー座標変換行列にクォータニオンの回転を適用
+    m.multiply(vMatrix, qMatrix, vMatrix);
+    m.multiply(invMatrix, qMatrix, invMatrix);
+    
+    // ビルボード用ビュー行列の逆行列を取得
+    m.inverse(invMatrix, invMatrix);
+    
+    // ビュー×プロジェクション座標変換行列
+    m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
+    m.multiply(pMatrix, vMatrix, tmpMatrix);
+    
+    // フロア用テクスチャをバインド
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, texture1);
+    gl.uniform1i(uniLocation[1], 1);
+    
+    // フロアのレンダリング
+    m.identity(mMatrix);
+    m.rotate(mMatrix, Math.PI / 2, [1, 0, 0], mMatrix);
+    m.scale(mMatrix, [3.0, 3.0, 1.0], mMatrix);
+    m.multiply(tmpMatrix, mMatrix, mvpMatrix);
+    gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+    gl.drawElements(gl.TRIANGLES, index.length, gl.UNSIGNED_SHORT, 0);
+    
+    // ビルボード用テクスチャをバインド
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture0);
+    gl.uniform1i(uniLocation[1], 0);
+    
+    // ビルボードのレンダリング
+    m.identity(mMatrix);
+    m.translate(mMatrix, [0.0, 1.0, 0.0], mMatrix);
+    if(eCheck.checked){m.multiply(mMatrix, invMatrix, mMatrix);}
+    m.multiply(tmpMatrix, mMatrix, mvpMatrix);
+    gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+    gl.drawElements(gl.TRIANGLES, index.length, gl.UNSIGNED_SHORT, 0);
 
     // コンテキストの再描画
     gl.flush();
