@@ -5,27 +5,22 @@
     <script id="vs" type="x-shader/x-vertex">
       attribute vec3 position;
       attribute vec4 color;
-      attribute vec2 textureCoord;
       uniform   mat4 mvpMatrix;
+      uniform   float pointSize;
       varying   vec4 vColor;
-      varying   vec2 vTextureCoord;
       
       void main(void){
           vColor        = color;
-          vTextureCoord = textureCoord;
           gl_Position   = mvpMatrix * vec4(position, 1.0);
+          gl_PointSize = pointSize;
       }   
     </script>
     <script id="fs" type="x-shader/x-fragment">
       precision mediump float;
-      
-      uniform sampler2D texture;
       varying vec4      vColor;
-      varying vec2      vTextureCoord;
       
       void main(void){
-          vec4 smpColor = texture2D(texture, vTextureCoord);
-          gl_FragColor  = vColor * smpColor;
+          gl_FragColor  = vColor;
       }
     </script>
   </head>
@@ -43,9 +38,21 @@
         <input id="range" type="range" value="50">
           time value (0 to 1)
       </p>
-    -->
       <p>
         <input id="check" type="checkbox" checked>billboard
       </p>
+    -->
+    <p>
+        <input id="point_size" type="range" value="10" min="10" max="100"> point size (1 to 10 pixels)
+    </p>
+    <p>
+        <input id="lines" type="radio" name="line" checked> gl.LINES
+    </p>
+    <p>
+        <input id="line_strip" type="radio" name="line"> gl.LINE_STRIP
+    </p>
+    <p>
+        <input id="line_loop" type="radio" name="line"> gl.LINE_LOOP
+    </p>
   </body>
 </html>

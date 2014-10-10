@@ -4,7 +4,10 @@ window.onload = function () {
   var c = document.getElementById('canvas');
 
   // input rangeエレメント
-  var eCheck = document.getElementById('check');
+   var eLines     = document.getElementById('lines');
+	var eLineStrip = document.getElementById('line_strip');
+	var eLineLoop  = document.getElementById('line_loop');
+	var ePointSize = document.getElementById('point_size');
 
   var q = new qtnIV();
   var qt = q.identity(q.create());
@@ -46,35 +49,32 @@ window.onload = function () {
   var attLocation = new Array();
   attLocation[0] = gl.getAttribLocation(prg, 'position');
   attLocation[1] = gl.getAttribLocation(prg, 'color');
-  attLocation[2] = gl.getAttribLocation(prg, 'textureCoord');
 
   // attributeの要素数を配列に格納
   var attStride = new Array();
   attStride[0] = 3;
   attStride[1] = 4;
-  attStride[2] = 2;
 
-  // 頂点の位置情報を格納する配列
+  // 点のVBO生成
+  var pointSphere = sphere(16, 16, 2.0);
+  var pPos = create_vbo(pointSphere.p);
+  var pCol = create_vbo(pointSphere.c);
+  var pVBOList = [pPos, pCol];
+
+  // 線の頂点位置
   var position = [
-    -1.0, 1.0, 0.0,
-     1.0, 1.0, 0.0,
-    -1.0,-1.0, 0.0,
-     1.0,-1.0, 0.0
+    -1.0, -1.0, 0.0,
+     1.0, -1.0, 0.0,
+    -1.0,  1.0, 0.0,
+     1.0,  1.0, 0.0
   ];
 
-  // 頂点の色情報を格納する配列
+  // 線の頂点色
   var color = [
-		1.0, 1.0, 1.0, 1.0,
-		1.0, 1.0, 1.0, 1.0,
-		1.0, 1.0, 1.0, 1.0,
-		1.0, 1.0, 1.0, 1.0
-	];
-
-  var textureCoord = [
-    0.0, 0.0,
-    1.0, 0.0,
-    0.0, 1.0,
-    1.0, 1.0
+       1.0, 1.0, 1.0, 1.0,
+       1.0, 0.0, 0.0, 1.0,
+       0.0, 1.0, 0.0, 1.0,
+       0.0, 0.0, 1.0, 1.0
   ];
 
   // 頂点のインデックスを格納する配列
@@ -83,15 +83,10 @@ window.onload = function () {
     3, 2, 1
   ];
 
-	var vPosition     = create_vbo(position);
-	var vColor        = create_vbo(color);
-	var vTextureCoord = create_vbo(textureCoord);
-	var VBOList       = [vPosition, vColor, vTextureCoord];
-	var iIndex        = create_ibo(index);
-
-  // VBOとIBOの登録
-  set_attribute(VBOList, attLocation, attStride);
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iIndex);
+  // 線のVBO生成
+  var lPos = create_vbo(position);
+  var lCol = create_vbo(color);
+  var lVBOList = [lPos, lCol];
 
   var m = new matIV();
   
@@ -110,7 +105,7 @@ window.onload = function () {
 
   var uniLocation = new Array();
   uniLocation[0] = gl.getUniformLocation(prg, 'mvpMatrix');
-  uniLocation[1] = gl.getUniformLocation(prg, 'texture');
+  uniLocation[1] = gl.getUniformLocation(prg, 'pointSize');
 
   // 視点の向き
   var eyeDirection = [0.0, 0.0, 5.0];
@@ -170,61 +165,51 @@ window.onload = function () {
   // 回常ループ
   (function () {
 
-    // canvasを初期化
-    gl.clearColor(0.0, 0.0, 0.0, 1.0);
-    gl.clearDepth(1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-     // クォータニオンを行列に適用
-    var qMatrix = m.identity(m.create());
-    q.toMatIV(qt, qMatrix);
-    
-    // カメラの座標位置
-    var camPosition = [0.0, 5.0, 10.0];
-    
-    // ビュー座標変換行列
-    m.lookAt(camPosition, [0, 0, 0], [0, 1, 0], vMatrix);
-    
-    // ビルボード用のビュー座標変換行列
-    m.lookAt([0, 0, 0], camPosition, [0, 1, 0], invMatrix);
-    
-    // ビュー座標変換行列にクォータニオンの回転を適用
-    m.multiply(vMatrix, qMatrix, vMatrix);
-    m.multiply(invMatrix, qMatrix, invMatrix);
-    
-    // ビルボード用ビュー行列の逆行列を取得
-    m.inverse(invMatrix, invMatrix);
-    
-    // ビュー×プロジェクション座標変換行列
-    m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
-    m.multiply(pMatrix, vMatrix, tmpMatrix);
-    
-    // フロア用テクスチャをバインド
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, texture1);
-    gl.uniform1i(uniLocation[1], 1);
-    
-    // フロアのレンダリング
-    m.identity(mMatrix);
-    m.rotate(mMatrix, Math.PI / 2, [1, 0, 0], mMatrix);
-    m.scale(mMatrix, [3.0, 3.0, 1.0], mMatrix);
-    m.multiply(tmpMatrix, mMatrix, mvpMatrix);
-    gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
-    gl.drawElements(gl.TRIANGLES, index.length, gl.UNSIGNED_SHORT, 0);
-    
-    // ビルボード用テクスチャをバインド
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, texture0);
-    gl.uniform1i(uniLocation[1], 0);
-    
-    // ビルボードのレンダリング
-    m.identity(mMatrix);
-    m.translate(mMatrix, [0.0, 1.0, 0.0], mMatrix);
-    if(eCheck.checked){m.multiply(mMatrix, invMatrix, mMatrix);}
-    m.multiply(tmpMatrix, mMatrix, mvpMatrix);
-    gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
-    gl.drawElements(gl.TRIANGLES, index.length, gl.UNSIGNED_SHORT, 0);
-
+    // canvasの初期化
+		gl.clearColor(0.0, 0.0, 0.0, 1.0);
+		gl.clearDepth(1.0);
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		
+		// カウンタ・基底角度の更新
+		count++;
+		var rad = (count % 360) * Math.PI / 180;
+		
+		// クォータニオンと行列の初期化
+		var qMatrix = m.identity(m.create());
+		q.toMatIV(qt, qMatrix);
+		
+		// モデル行列の生成
+		var camPosition = [0.0, 5.0, 10.0];
+		m.lookAt(camPosition, [0, 0, 0], [0, 1, 0], vMatrix);
+		m.multiply(vMatrix, qMatrix, vMatrix);
+		m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
+		m.multiply(pMatrix, vMatrix, tmpMatrix);
+		
+		// 点のサイズを計算
+		var pointSize = ePointSize.value / 10;
+		
+		// 
+		set_attribute(pVBOList, attLocation, attStride);
+		m.identity(mMatrix);
+		m.rotate(mMatrix, rad, [0, 1, 0], mMatrix);
+		m.multiply(tmpMatrix, mMatrix, mvpMatrix);
+		gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+		gl.uniform1f(uniLocation[1], pointSize);
+		gl.drawArrays(gl.POINTS, 0, pointSphere.p.length / 3);
+		
+		var lineOption = 0;
+		if(eLines.checked){lineOption = gl.LINES;}
+		if(eLineStrip.checked){lineOption = gl.LINE_STRIP;}
+		if(eLineLoop.checked){lineOption = gl.LINE_LOOP;}
+		
+		set_attribute(lVBOList, attLocation, attStride);
+		m.identity(mMatrix);
+		m.rotate(mMatrix, Math.PI / 2, [1, 0, 0], mMatrix);
+		m.scale(mMatrix, [3.0, 3.0, 1.0], mMatrix);
+		m.multiply(tmpMatrix, mMatrix, mvpMatrix);
+		gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+		gl.drawArrays(lineOption, 0, position.length / 3);
+		
     // コンテキストの再描画
     gl.flush();
 
