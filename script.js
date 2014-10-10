@@ -34,7 +34,7 @@ window.onload = function () {
 
   c.addEventListener('mousemove', mouseMove, true);
 
-  var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+  var gl = c.getContext('webgl', {stencil: true}) || c.getContext('experimental-webgl', {stencil: true});
 
   gl.clearColor(0.0, 0.0, 0.0, 1.0);
   gl.clearDepth(1.0);
@@ -48,33 +48,45 @@ window.onload = function () {
   // attributeLocationを配列に登録
   var attLocation = new Array();
   attLocation[0] = gl.getAttribLocation(prg, 'position');
-  attLocation[1] = gl.getAttribLocation(prg, 'color');
+  attLocation[1] = gl.getAttribLocation(prg, 'normal');
+  attLocation[2] = gl.getAttribLocation(prg, 'color');
+  attLocation[3] = gl.getAttribLocation(prg, 'textureCoord');
 
   // attributeの要素数を配列に格納
   var attStride = new Array();
   attStride[0] = 3;
-  attStride[1] = 4;
-
-  // 点のVBO生成
-  var pointSphere = sphere(16, 16, 2.0);
-  var pPos = create_vbo(pointSphere.p);
-  var pCol = create_vbo(pointSphere.c);
-  var pVBOList = [pPos, pCol];
+  attStride[1] = 3;
+  attStride[2] = 4;
+  attStride[3] = 2;
 
   // 線の頂点位置
   var position = [
-    -1.0, -1.0, 0.0,
-     1.0, -1.0, 0.0,
     -1.0,  1.0, 0.0,
-     1.0,  1.0, 0.0
+     1.0,  1.0, 0.0,
+    -1.0, -1.0, 0.0,
+     1.0, -1.0, 0.0
+  ];
+
+  var normal = [
+    0.0, 0.0, 1.0,
+    0.0, 0.0, 1.0,
+    0.0, 0.0, 1.0,
+    0.0, 0.0, 1.0
   ];
 
   // 線の頂点色
   var color = [
-       1.0, 1.0, 1.0, 1.0,
        1.0, 0.0, 0.0, 1.0,
        0.0, 1.0, 0.0, 1.0,
-       0.0, 0.0, 1.0, 1.0
+       0.0, 0.0, 1.0, 1.0,
+       1.0, 1.0, 1.0, 1.0
+  ];
+
+  var textureCoord = [
+      0.0, 0.0,
+      1.0, 0.0,
+      0.0, 1.0,
+      1.0, 1.0
   ];
 
   // 頂点のインデックスを格納する配列
@@ -83,10 +95,14 @@ window.onload = function () {
     3, 2, 1
   ];
 
-  // 線のVBO生成
-  var lPos = create_vbo(position);
-  var lCol = create_vbo(color);
-  var lVBOList = [lPos, lCol];
+  var vPosition     = create_vbo(position);
+	var vNormal       = create_vbo(normal);
+	var vColor        = create_vbo(color);
+	var vTextureCoord = create_vbo(textureCoord);
+	var vVBOList      = [vPosition, vNormal, vColor, vTextureCoord];
+	var vIndex        = create_ibo(index);
+	set_attribute(vVBOList, attLocation, attStride);
+	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vIndex);
 
   var m = new matIV();
   
@@ -105,9 +121,9 @@ window.onload = function () {
 
   var uniLocation = new Array();
   uniLocation[0] = gl.getUniformLocation(prg, 'mvpMatrix');
-  uniLocation[1] = gl.getUniformLocation(prg, 'pointSize');
-  uniLocation[2] = gl.getUniformLocation(prg, 'texture');
-  uniLocation[3] = gl.getUniformLocation(prg, 'useTexture');
+  uniLocation[1] = gl.getUniformLocation(prg, 'invMatrix');
+  uniLocation[2] = gl.getUniformLocation(prg, 'lightDirection');
+  uniLocation[3] = gl.getUniformLocation(prg, 'texture');
 
   // 視点の向き
   var eyeDirection = [0.0, 0.0, 5.0];
@@ -122,7 +138,7 @@ window.onload = function () {
   var ambientColor = [0.1, 0.1, 0.1, 1.0];
 
   // 平行光源の向き
-  var lightPosition = [15.0, 10.0, 15.0];
+  var lightDirection = [1.0, 1.0, 1.0];
 
   // カウンタ
   var count = 0;
@@ -151,69 +167,69 @@ window.onload = function () {
   // パラメーターの設定
   gl.enable(gl.DEPTH_TEST);
 	gl.depthFunc(gl.LEQUAL);
-	gl.enable(gl.BLEND);
   
-  // ブレンドファクター
-  gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
-
   var texture = null;
 
   // テクスチャの読み込み
-  create_texture('texture2.png');
+  create_texture('texture.png');
 
 
   // 回常ループ
   (function () {
 
     // canvasの初期化
-		gl.clearColor(0.0, 0.0, 0.0, 1.0);
+		gl.clearColor(0.0, 0.7, 0.7, 1.0);
 		gl.clearDepth(1.0);
-		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		gl.clearStencil(0);
+		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
 		
-		// カウンタ・基底角度の更新
-		count++;
-		var rad = (count % 360) * Math.PI / 180;
-		
-		// クォータニオンと行列の初期化
+		// ビュー行列の生成
+		m.lookAt([0.0, 0.0, 5.0], [0, 0, 0], [0, 1, 0], vMatrix);
+		m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
 		var qMatrix = m.identity(m.create());
 		q.toMatIV(qt, qMatrix);
-		
-		// モデル行列の生成
-		var camPosition = [0.0, 5.0, 10.0];
-		m.lookAt(camPosition, [0, 0, 0], [0, 1, 0], vMatrix);
 		m.multiply(vMatrix, qMatrix, vMatrix);
-		m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
 		m.multiply(pMatrix, vMatrix, tmpMatrix);
 		
-		// 点のサイズを計算
-		var pointSize = ePointSize.value / 10;
-
-		set_attribute(pVBOList, attLocation, attStride);
-		m.identity(mMatrix);
-		m.rotate(mMatrix, rad, [0, 1, 0], mMatrix);
-		m.multiply(tmpMatrix, mMatrix, mvpMatrix);
-		gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
-		gl.uniform1f(uniLocation[1], pointSize);
-		gl.uniform1i(uniLocation[2], 0);
-		gl.uniform1i(uniLocation[3], true);
-		gl.drawArrays(gl.POINTS, 0, pointSphere.p.length / 3);
-
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
+		// テクスチャの設定
+		gl.activeTexture(gl.TEXTURE0);
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.uniform1i(uniLocation[3], 0);
 		
-		var lineOption = 0;
-		if(eLines.checked){lineOption = gl.LINES;}
-		if(eLineStrip.checked){lineOption = gl.LINE_STRIP;}
-		if(eLineLoop.checked){lineOption = gl.LINE_LOOP;}
+		// ステンシルによるフィルタリングを設定する
+		gl.enable(gl.STENCIL_TEST);
 		
-		set_attribute(lVBOList, attLocation, attStride);
-		m.identity(mMatrix);
-		m.rotate(mMatrix, Math.PI / 2, [1, 0, 0], mMatrix);
-		m.scale(mMatrix, [3.0, 3.0, 1.0], mMatrix);
-		m.multiply(tmpMatrix, mMatrix, mvpMatrix);
-		gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
-    gl.uniform1i(uniLocation[3], false);
-		gl.drawArrays(lineOption, 0, position.length / 3);
+		// ステンシル設定
+		gl.stencilFunc(gl.ALWAYS, 1, ~0);
+		gl.stencilOp(gl.KEEP, gl.REPLACE, gl.REPLACE);
+		render([-0.25, 0.25, -0.5]);
+		
+		// ステンシル設定２
+		gl.stencilFunc(gl.ALWAYS, 0, ~0);
+		gl.stencilOp(gl.KEEP, gl.INCR, gl.INCR);
+		render([0.0, 0.0, 0.0]);
+		
+		// ステンシル設定３
+		gl.stencilFunc(gl.EQUAL, 2, ~0);
+		gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+		render([0.25, -0.25, 0.5]);
+		
+		function render(tr){
+			// 逆行列の生成
+			m.identity(mMatrix);
+			m.translate(mMatrix, [tr[0], tr[1], tr[2]], mMatrix);
+			m.multiply(tmpMatrix, mMatrix, mvpMatrix);
+			m.inverse(mMatrix, invMatrix);
+			
+			// uniform変数への受け渡し
+			gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+			gl.uniformMatrix4fv(uniLocation[1], false, invMatrix);
+			gl.uniform3fv(uniLocation[2], lightDirection);
+			gl.drawElements(gl.TRIANGLES, index.length, gl.UNSIGNED_SHORT, 0);
+		}
+		
+		// ステンシル設定を無効に
+		gl.disable(gl.STENCIL_TEST);
 		
     // コンテキストの再描画
     gl.flush();
