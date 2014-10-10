@@ -17,10 +17,21 @@
     </script>
     <script id="fs" type="x-shader/x-fragment">
       precision mediump float;
+
+      uniform sampler2D texture;
+      uniform int       useTexture;
       varying vec4      vColor;
       
       void main(void){
-          gl_FragColor  = vColor;
+        vec4 smpColor = vec4(1.0);
+        if(bool(useTexture)){
+          smpColor = texture2D(texture, gl_PointCoord);
+        }
+        if(smpColor.a == 0.0){
+            discard;
+        }else{
+            gl_FragColor = vColor * smpColor;
+        }
       }
     </script>
   </head>
@@ -43,7 +54,7 @@
       </p>
     -->
     <p>
-        <input id="point_size" type="range" value="10" min="10" max="100"> point size (1 to 10 pixels)
+        <input id="point_size" type="range" value="10" min="10" max="320"> point size (1 to 32 pixels)
     </p>
     <p>
         <input id="lines" type="radio" name="line" checked> gl.LINES

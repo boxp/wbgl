@@ -106,6 +106,8 @@ window.onload = function () {
   var uniLocation = new Array();
   uniLocation[0] = gl.getUniformLocation(prg, 'mvpMatrix');
   uniLocation[1] = gl.getUniformLocation(prg, 'pointSize');
+  uniLocation[2] = gl.getUniformLocation(prg, 'texture');
+  uniLocation[3] = gl.getUniformLocation(prg, 'useTexture');
 
   // 視点の向き
   var eyeDirection = [0.0, 0.0, 5.0];
@@ -154,12 +156,10 @@ window.onload = function () {
   // ブレンドファクター
   gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
 
-  var texture0 = null;
-  var texture1 = null;
+  var texture = null;
 
   // テクスチャの読み込み
-  create_texture('texture0.png', 0);
-  create_texture('texture1.png', 1);
+  create_texture('texture2.png');
 
 
   // 回常ループ
@@ -187,15 +187,19 @@ window.onload = function () {
 		
 		// 点のサイズを計算
 		var pointSize = ePointSize.value / 10;
-		
-		// 
+
 		set_attribute(pVBOList, attLocation, attStride);
 		m.identity(mMatrix);
 		m.rotate(mMatrix, rad, [0, 1, 0], mMatrix);
 		m.multiply(tmpMatrix, mMatrix, mvpMatrix);
 		gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
 		gl.uniform1f(uniLocation[1], pointSize);
+		gl.uniform1i(uniLocation[2], 0);
+		gl.uniform1i(uniLocation[3], true);
 		gl.drawArrays(gl.POINTS, 0, pointSphere.p.length / 3);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
 		
 		var lineOption = 0;
 		if(eLines.checked){lineOption = gl.LINES;}
@@ -208,6 +212,7 @@ window.onload = function () {
 		m.scale(mMatrix, [3.0, 3.0, 1.0], mMatrix);
 		m.multiply(tmpMatrix, mMatrix, mvpMatrix);
 		gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+    gl.uniform1i(uniLocation[3], false);
 		gl.drawArrays(lineOption, 0, position.length / 3);
 		
     // コンテキストの再描画
