@@ -1,16 +1,18 @@
+var c;
+var q = new qtnIV();
+var qt = q.identity(q.create());
+
+
 window.onload = function () {
 
   // canvasとクォータニオンをグローバル変数とする
-  var c = document.getElementById('canvas');
+  c = document.getElementById('canvas');
 
   // input rangeエレメント
-   var eLines     = document.getElementById('lines');
+  var eLines     = document.getElementById('lines');
 	var eLineStrip = document.getElementById('line_strip');
 	var eLineLoop  = document.getElementById('line_loop');
 	var ePointSize = document.getElementById('point_size');
-
-  var q = new qtnIV();
-  var qt = q.identity(q.create());
 
   // マウスムーブイベントリスナ
   function mouseMove(e) {
@@ -36,10 +38,6 @@ window.onload = function () {
 
   var gl = c.getContext('webgl', {stencil: true}) || c.getContext('experimental-webgl', {stencil: true});
 
-  gl.clearColor(0.0, 0.0, 0.0, 1.0);
-  gl.clearDepth(1.0);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
   var v_shader = create_shader('vs');
   var f_shader = create_shader('fs');
 
@@ -59,50 +57,24 @@ window.onload = function () {
   attStride[2] = 4;
   attStride[3] = 2;
 
-  // 線の頂点位置
-  var position = [
-    -1.0,  1.0, 0.0,
-     1.0,  1.0, 0.0,
-    -1.0, -1.0, 0.0,
-     1.0, -1.0, 0.0
-  ];
 
-  var normal = [
-    0.0, 0.0, 1.0,
-    0.0, 0.0, 1.0,
-    0.0, 0.0, 1.0,
-    0.0, 0.0, 1.0
-  ];
+  // トーラスデータ
+  var torusData     = torus(64, 64, 0.25, 1.0)
+	var tPosition     = create_vbo(torusData.p);
+	var tNormal       = create_vbo(torusData.n);
+	var tColor        = create_vbo(torusData.c);
+	var tTextureCoord = create_vbo(torusData.t);
+	var tVBOList      = [tPosition, tNormal, tColor, tTextureCoord];
+	var tIndex        = create_ibo(torusData.i);
 
-  // 線の頂点色
-  var color = [
-       1.0, 0.0, 0.0, 1.0,
-       0.0, 1.0, 0.0, 1.0,
-       0.0, 0.0, 1.0, 1.0,
-       1.0, 1.0, 1.0, 1.0
-  ];
-
-  var textureCoord = [
-      0.0, 0.0,
-      1.0, 0.0,
-      0.0, 1.0,
-      1.0, 1.0
-  ];
-
-  // 頂点のインデックスを格納する配列
-  var index = [
-    0, 1, 2,
-    3, 2, 1
-  ];
-
-  var vPosition     = create_vbo(position);
-	var vNormal       = create_vbo(normal);
-	var vColor        = create_vbo(color);
-	var vTextureCoord = create_vbo(textureCoord);
-	var vVBOList      = [vPosition, vNormal, vColor, vTextureCoord];
-	var vIndex        = create_ibo(index);
-	set_attribute(vVBOList, attLocation, attStride);
-	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vIndex);
+  // sphere
+  var sphereData    = sphere(64, 64, 1.0, [1.0, 1.0, 1.0, 1.0])
+	var sPosition     = create_vbo(sphereData.p);
+	var sNormal       = create_vbo(sphereData.n);
+	var sColor        = create_vbo(sphereData.c);
+	var sTextureCoord = create_vbo(sphereData.t);
+	var sVBOList      = [sPosition, sNormal, sColor, sTextureCoord];
+	var sIndex        = create_ibo(sphereData.i);
 
   var m = new matIV();
   
@@ -123,7 +95,10 @@ window.onload = function () {
   uniLocation[0] = gl.getUniformLocation(prg, 'mvpMatrix');
   uniLocation[1] = gl.getUniformLocation(prg, 'invMatrix');
   uniLocation[2] = gl.getUniformLocation(prg, 'lightDirection');
-  uniLocation[3] = gl.getUniformLocation(prg, 'texture');
+  uniLocation[3] = gl.getUniformLocation(prg, 'useLight');
+  uniLocation[4] = gl.getUniformLocation(prg, 'texture');
+  uniLocation[5] = gl.getUniformLocation(prg, 'useTexture');
+  uniLocation[6] = gl.getUniformLocation(prg, 'outline');
 
   // 視点の向き
   var eyeDirection = [0.0, 0.0, 5.0];
@@ -173,18 +148,20 @@ window.onload = function () {
   // テクスチャの読み込み
   create_texture('texture.png');
 
-
   // 回常ループ
   (function () {
 
     // canvasの初期化
-		gl.clearColor(0.0, 0.7, 0.7, 1.0);
+		gl.clearColor(0.0, 0.0, 0.0, 1.0);
 		gl.clearDepth(1.0);
 		gl.clearStencil(0);
 		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+
+    count++;
+		var rad = (count % 360) * Math.PI / 180;
 		
 		// ビュー行列の生成
-		m.lookAt([0.0, 0.0, 5.0], [0, 0, 0], [0, 1, 0], vMatrix);
+		m.lookAt([0.0, 0.0, 10.0], [0, 0, 0], [0, 1, 0], vMatrix);
 		m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
 		var qMatrix = m.identity(m.create());
 		q.toMatIV(qt, qMatrix);
@@ -194,43 +171,80 @@ window.onload = function () {
 		// テクスチャの設定
 		gl.activeTexture(gl.TEXTURE0);
 		gl.bindTexture(gl.TEXTURE_2D, texture);
-		gl.uniform1i(uniLocation[3], 0);
 		
 		// ステンシルによるフィルタリングを設定する
 		gl.enable(gl.STENCIL_TEST);
-		
-		// ステンシル設定
+
+    // カラーと深度をマスク
+    gl.colorMask(false, false, false, false);
+    gl.depthMask(false);
+
+		// トーラス（シルエット）用ステンシル設定
 		gl.stencilFunc(gl.ALWAYS, 1, ~0);
 		gl.stencilOp(gl.KEEP, gl.REPLACE, gl.REPLACE);
-		render([-0.25, 0.25, -0.5]);
+
+    // トーラスの頂点データ
+    set_attribute(tVBOList, attLocation, attStride);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tIndex);
+
+    // トーラスモデル座標変換行列の生成
+    m.identity(mMatrix);
+    m.rotate(mMatrix, rad, [0.0, 1.0, 1.0], mMatrix);
+    m.multiply(tmpMatrix, mMatrix, mvpMatrix);
+
+    // uniform変数の登録と描画
+    gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+    gl.uniform1i(uniLocation[3], false); // ライティングOFF
+    gl.uniform1i(uniLocation[5], false); // テクスチャOFF
+    gl.uniform1i(uniLocation[6], true); // アウトラインON
+    gl.drawElements(gl.TRIANGLES, torusData.i.length, gl.UNSIGNED_SHORT, 0);
 		
-		// ステンシル設定２
-		gl.stencilFunc(gl.ALWAYS, 0, ~0);
-		gl.stencilOp(gl.KEEP, gl.INCR, gl.INCR);
-		render([0.0, 0.0, 0.0]);
-		
-		// ステンシル設定３
-		gl.stencilFunc(gl.EQUAL, 2, ~0);
-		gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
-		render([0.25, -0.25, 0.5]);
-		
-		function render(tr){
-			// 逆行列の生成
-			m.identity(mMatrix);
-			m.translate(mMatrix, [tr[0], tr[1], tr[2]], mMatrix);
-			m.multiply(tmpMatrix, mMatrix, mvpMatrix);
-			m.inverse(mMatrix, invMatrix);
-			
-			// uniform変数への受け渡し
-			gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
-			gl.uniformMatrix4fv(uniLocation[1], false, invMatrix);
-			gl.uniform3fv(uniLocation[2], lightDirection);
-			gl.drawElements(gl.TRIANGLES, index.length, gl.UNSIGNED_SHORT, 0);
-		}
-		
-		// ステンシル設定を無効に
-		gl.disable(gl.STENCIL_TEST);
-		
+        // カラーと深度のマスクを解除
+    gl.colorMask(true, true, true, true);
+    gl.depthMask(true);
+
+    // 球体モデル用ステンシル設定
+    gl.stencilFunc(gl.EQUAL, 0, ~0);
+    gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+
+    // 球体モデルの頂点データ
+    set_attribute(sVBOList, attLocation, attStride);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sIndex);
+
+    // 球体モデル座標変換行列の生成
+    m.identity(mMatrix);
+    m.scale(mMatrix, [50.0, 50.0, 50.0], mMatrix);
+    m.multiply(tmpMatrix, mMatrix, mvpMatrix);
+
+    // uniform変数の登録と描画
+    gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+    gl.uniform1i(uniLocation[3], false); // *ライティング OFF
+    gl.uniform1i(uniLocation[4], 0);
+    gl.uniform1i(uniLocation[5], true);  // *テクスチャ   ON
+    gl.uniform1i(uniLocation[6], false); // *アウトライン OFF
+    gl.drawElements(gl.TRIANGLES, sphereData.i.length, gl.UNSIGNED_SHORT, 0);
+
+    // ステンシルテストを無効にする
+    gl.disable(gl.STENCIL_TEST);
+
+    // トーラスの頂点データ
+    set_attribute(tVBOList, attLocation, attStride);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tIndex);
+
+    // トーラスモデル座標変換行列の生成
+    m.identity(mMatrix);
+    m.rotate(mMatrix, rad, [0.0, 1.0, 1.0], mMatrix);
+    m.multiply(tmpMatrix, mMatrix, mvpMatrix);
+
+    // uniform変数の登録と描画
+    gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+    gl.uniformMatrix4fv(uniLocation[1], false, invMatrix);
+    gl.uniform3fv(uniLocation[2], lightDirection);
+    gl.uniform1i(uniLocation[3], true);  // *ライティング ON
+    gl.uniform1i(uniLocation[5], false); // *テクスチャ   OFF
+    gl.uniform1i(uniLocation[6], false); // *アウトライン OFF
+    gl.drawElements(gl.TRIANGLES, torusData.i.length, gl.UNSIGNED_SHORT, 0);
+
     // コンテキストの再描画
     gl.flush();
 
@@ -360,18 +374,7 @@ window.onload = function () {
       // テクスチャのバインドを無効化
       gl.bindTexture(gl.TEXTURE_2D, null);
 
-      // 生成したテクスチャをグローバル変数に格納
-      switch(number) {
-        case 0:
-          texture0 = tex;
-          break;
-        case 1:
-          texture1 = tex;
-          break;
-        default:
-          texture = tex;
-          break;
-      };
+      texture = tex;
     };
 
     // イメージオブジェクトのソースを指定
@@ -392,41 +395,5 @@ window.onload = function () {
         break;
     }
   }
-}
-
-// 球体を生成する関数
-function sphere(row, column, rad, color){
-    var pos = new Array(), nor = new Array(),
-        col = new Array(), idx = new Array();
-    for(var i = 0; i <= row; i++){
-        var r = Math.PI / row * i;
-        var ry = Math.cos(r);
-        var rr = Math.sin(r);
-        for(var ii = 0; ii <= column; ii++){
-            var tr = Math.PI * 2 / column * ii;
-            var tx = rr * rad * Math.cos(tr);
-            var ty = ry * rad;
-            var tz = rr * rad * Math.sin(tr);
-            var rx = rr * Math.cos(tr);
-            var rz = rr * Math.sin(tr);
-            if(color){
-                var tc = color;
-            }else{
-                tc = hsva(360 / row * i, 1, 1, 1);
-            }
-            pos.push(tx, ty, tz);
-            nor.push(rx, ry, rz);
-            col.push(tc[0], tc[1], tc[2], tc[3]);
-        }
-    }
-    r = 0;
-    for(i = 0; i < row; i++){
-        for(ii = 0; ii < column; ii++){
-            r = (column + 1) * i + ii;
-            idx.push(r, r + 1, r + column + 2);
-            idx.push(r, r + column + 2, r + column + 1);
-        }
-    }
-    return {p : pos, n : nor, c : col, i : idx};
 }
 
